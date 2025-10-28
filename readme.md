@@ -2,6 +2,11 @@
 
 augment the OG pixel's internal storage with an external drive
 
+> [!IMPORTANT]
+> this repository now targets the pixel 1 xl (codename `marlin`) specifically.
+> the scripts will refuse to run on other devices unless you explicitly
+> override the safety check.
+
 > [!WARNING]  
 > this code is experimental and there is no guarantee that it works. rooting your phone or running any commands as root can be very dangerous. you have been warned.
 
@@ -47,7 +52,9 @@ so i spent some time figuring out a way to get files on external storage drives 
 * there's no GUI, you need to execute shell scripts
 
 ## prerequisites
-* a Google Pixel (sailfish) or Google Pixel XL (marlin) on Android 10, rooted with [Magisk](https://github.com/topjohnwu/Magisk). may work on other phones with other versions of android (see https://github.com/master-hax/pixel-backup-gang/pull/33).
+* a Google Pixel XL (marlin) on Android 10, rooted with [Magisk](https://github.com/topjohnwu/Magisk). the scripts now verify the
+  codename/model before running to avoid accidental use on unsupported
+  hardware.
 * a USB storage drive formatted with an ext4 or FAT32 filesystem.
 
 ## installation
@@ -77,6 +84,33 @@ this is the preferred installation method for development as it doesn't require 
 
 ## usage
 
+### configuration (optional)
+create a file named `pixel-backup.conf` in the repository root or the
+installation directory to override the default mount points. each option is a
+shell variable assignment, for example:
+
+```
+PIXEL_BACKUP_BINDING_NAME=my_photos
+PIXEL_BACKUP_DRIVE_MOUNT_DIR=/mnt/ssd
+PIXEL_BACKUP_MEDIA_SCAN=0
+```
+
+available settings:
+
+* `PIXEL_BACKUP_BINDING_NAME` – directory name that will appear in both the
+  external drive and internal storage (defaults to `the_binding`)
+* `PIXEL_BACKUP_DRIVE_MOUNT_DIR` – where the ext4 block device is mounted on the
+  phone (defaults to `/mnt/pixel_backup_drive`)
+* `PIXEL_BACKUP_INTERNAL_MOUNT_POINT` – override automatic Android-version
+  detection for the internal storage mount
+* `PIXEL_BACKUP_DISABLE_SELINUX` – set to `0` to skip the permissive SELinux
+  toggle in `mount_ext4.sh`
+* `PIXEL_BACKUP_MEDIA_SCAN` – set to `0` to skip the media scanner broadcast
+* `PIXEL_BACKUP_DEBUG` – set to `1` to enable verbose debug logging and shell
+  tracing for troubleshooting
+* `PIXEL_BACKUP_SKIP_DEVICE_CHECK` – set to `1` only if you want to bypass the
+  Pixel XL device guard (not recommended)
+
 ### setup
 1. start a shell on the device & navigate to the installation directory
     * from the device
@@ -99,16 +133,14 @@ this is the preferred installation method for development as it doesn't require 
    * if you know the filesystem UUID, you can use `./find_device.sh`. this is just a convenience script, you don't need to run this.
 1. run `./mount_ext4.sh <BLOCK_DEVICE>` e.g. `./mount_ext4.sh /dev/block/sdg1`
 > [!CAUTION]
-> the `mount_ext4.sh` script currently disables [selinux](https://en.wikipedia.org/wiki/Security-Enhanced_Linux) by running `setenforce 0`. you must not have any untrusted apps installed on your device. do not visit untrusted websites. to re-enable selinux, you can reboot your device, or run `setenforce 1` with root permissions.
->
-> want this fixed? see https://github.com/master-hax/pixel-backup-gang/issues/13 https://github.com/master-hax/pixel-backup-gang/blob/b25a5575fba3897cce126c15ed99245b1335f4c3/scripts/mount_ext4.sh#L41 
+> `mount_ext4.sh` will attempt to set [selinux](https://en.wikipedia.org/wiki/Security-Enhanced_Linux) to permissive mode so that Google Photos and other apps can reach the mounted drive. set `PIXEL_BACKUP_DISABLE_SELINUX=0` in the configuration file if you want to opt out (mounting may fail on locked-down builds).
 
 #### FAT32 drives (when you only have files < 4gb and/or don't want to disable selinux and/or are a Windows only user unwilling to install a tool like [Ext4Fsd](https://github.com/bobranten/Ext4Fsd.git) and/or are transferring directly from some kind of capture device)
 1. connect the FAT32 formatted external drive to the pixel. it should be working normally as removable storage i.e. readable & writable by apps with permission.
 1. find the name of folder that the drive is mounted to. it looks like `/mnt/media_rw/2IDK-11F4` - you can check the path displayed in any file explorer app.
 1. run `./remount_vfat.sh <MOUNTED_FOLDER>` e.g. `./remount_vfat.sh /mnt/media_rw/2IDK-11F4`
 
-**everything located under `/the_binding` on the external drive should now be visible by apps at `/the_binding` in the internal storage** (the directories are automatically created if they don't already exist)
+**everything located under `/the_binding` on the external drive should now be visible by apps at `/the_binding` in the internal storage** (the directories are automatically created if they don't already exist). progress messages are printed throughout the mount so you can see what the script is doing.
 
 > [!NOTE]  
 > Google Photos will not instantly pick up the new media. It scans the filesystem to update their library when it wants to.
@@ -121,6 +153,16 @@ this is the preferred installation method for development as it doesn't require 
 2. run `./unmount.sh`
 
 **everything located under `/the_binding` in the internal storage should now be gone. you can disconnect the drive if you're sure all pending writes have been flushed.**
+
+### forcing google photos to rescan (alternative refresh path)
+
+if google photos still refuses to show the mounted media, run
+`./force_media_scan.sh`. it replays every media database refresh trick we know
+for the pixel 1 xl: the classic media scanner broadcast, a direct media
+provider call, and a `content` cli invocation. all commands emit detailed echo
+statements and debug logs (when enabled) so you can see whether each strategy
+worked. this gives you an alternative way to kick photos into gear without
+re-running the entire mount sequence.
 
 ## notes
 * currently, the ext4 mounting script disables selinux security controls entirely, which is quite unsafe - do not have any kind of untrusted apps installed on your device while using this. selinux remains disabled until the next boot, or you can run the command `setenforce 1` to re-enable it earlier. don't forget that the software on the pixel is severely out of date and there are a lot of serious known vulnerabilities. try to keep device radios off (especially bluetooth and NFC) to reduce the attack surface.
