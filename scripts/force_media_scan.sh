@@ -15,6 +15,13 @@ echo "[pixel-backup] 📡 forcing media index refresh for Pixel 1 XL"
 
 internal_binding_dir=$(internal_binding_path)
 drive_binding_dir=$(drive_binding_path)
+drive_binding_reason=$PIXEL_BACKUP_BINDING_SOURCE_REASON
+
+case "$drive_binding_reason" in
+  auto-root)
+    log_warn "media scan fallback is targeting the entire drive; create '$PIXEL_BACKUP_BINDING_NAME' to scope it down"
+    ;;
+esac
 
 echo "[pixel-backup] 🔎 checking mount paths"
 if [ ! -d "$drive_binding_dir" ]; then

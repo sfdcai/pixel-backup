@@ -28,6 +28,8 @@ PIXEL_BACKUP_DISABLE_SELINUX=${PIXEL_BACKUP_DISABLE_SELINUX:-1}
 PIXEL_BACKUP_MEDIA_SCAN=${PIXEL_BACKUP_MEDIA_SCAN:-1}
 PIXEL_BACKUP_SKIP_DEVICE_CHECK=${PIXEL_BACKUP_SKIP_DEVICE_CHECK:-0}
 PIXEL_BACKUP_DEBUG=${PIXEL_BACKUP_DEBUG:-0}
+PIXEL_BACKUP_DRIVE_SOURCE=${PIXEL_BACKUP_DRIVE_SOURCE:-auto}
+PIXEL_BACKUP_BINDING_SOURCE_REASON=""
 
 if [ "$PIXEL_BACKUP_DEBUG" = "1" ]; then
   set -x
@@ -90,8 +92,33 @@ drive_mount_point() {
   printf '%s\n' "$PIXEL_BACKUP_DRIVE_MOUNT_DIR"
 }
 
+resolve_drive_binding_source() {
+  mount_root=$1
+  binding_dir="$mount_root/$PIXEL_BACKUP_BINDING_NAME"
+
+  case "$PIXEL_BACKUP_DRIVE_SOURCE" in
+    root)
+      PIXEL_BACKUP_BINDING_SOURCE_REASON="root"
+      printf '%s\n' "$mount_root"
+      ;;
+    subdir)
+      PIXEL_BACKUP_BINDING_SOURCE_REASON="subdir"
+      printf '%s\n' "$binding_dir"
+      ;;
+    auto|*)
+      if [ -d "$binding_dir" ]; then
+        PIXEL_BACKUP_BINDING_SOURCE_REASON="auto-subdir"
+        printf '%s\n' "$binding_dir"
+      else
+        PIXEL_BACKUP_BINDING_SOURCE_REASON="auto-root"
+        printf '%s\n' "$mount_root"
+      fi
+      ;;
+  esac
+}
+
 drive_binding_path() {
-  printf '%s/%s\n' "$(drive_mount_point)" "$PIXEL_BACKUP_BINDING_NAME"
+  resolve_drive_binding_source "$(drive_mount_point)"
 }
 
 internal_binding_path() {

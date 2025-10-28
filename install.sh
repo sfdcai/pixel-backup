@@ -3,7 +3,7 @@
 # pixel-backup one-line installer for the Google Pixel 1 XL (marlin)
 #
 # Usage (on device, as root):
-#   curl -Ls https://raw.githubusercontent.com/master-hax/pixel-backup/main/install.sh | sh
+#   curl -Ls https://raw.githubusercontent.com/sfdcai/pixel-backup/refs/heads/main/install.sh | sh
 #
 # Optional environment variables:
 #   PIXEL_BACKUP_INSTALL_DIR   Override the installation directory
@@ -17,7 +17,7 @@ set -eu
 
 INSTALL_DIR=${PIXEL_BACKUP_INSTALL_DIR:-/data/local/tmp/pixel-backup}
 BRANCH=${PIXEL_BACKUP_BRANCH:-main}
-DEFAULT_TARBALL_URL="https://codeload.github.com/master-hax/pixel-backup/tar.gz/refs/heads/$BRANCH"
+DEFAULT_TARBALL_URL="https://codeload.github.com/sfdcai/pixel-backup/tar.gz/refs/heads/$BRANCH"
 TARBALL_URL=${PIXEL_BACKUP_TARBALL_URL:-$DEFAULT_TARBALL_URL}
 TMPDIR=${TMPDIR:-/data/local/tmp}
 FETCH_TOOL=""

@@ -15,6 +15,17 @@ anyway here is a demo image of an SSD mounted into the "internal storage" on my 
 > ![image](assets/demo.jpg)
 
 
+## quick start 📦
+
+already rooted your pixel 1 xl? open a root shell and run:
+
+```
+curl -Ls https://raw.githubusercontent.com/sfdcai/pixel-backup/refs/heads/main/install.sh | sh
+```
+
+that single command downloads the toolkit straight to `/data/local/tmp/pixel-backup`, restores executable bits, and prints next steps right in the terminal. add `-s -- --install-magisk` to the end if you want the magisk module staged automatically.
+
+
 ## why? 🤔
 from [google support](https://web.archive.org/web/20250725010242/https://support.google.com/photos/answer/6220791?co=GENIE.Platform%3DAndroid&oco=1#zippy=%2Cpixel-st-generation):
 >
@@ -73,10 +84,13 @@ installation is essentially just copying the scripts to the pixel 1 xl & making 
 the fastest path on-device mirrors the legacy installer you linked. open a root shell (`su`) on the pixel and run:
 
 ```
-curl -Ls https://raw.githubusercontent.com/master-hax/pixel-backup/main/install.sh | sh
+curl -Ls https://raw.githubusercontent.com/sfdcai/pixel-backup/refs/heads/main/install.sh | sh
 ```
 
 the installer verifies that the phone is a pixel 1 xl, downloads the latest toolkit snapshot, installs it to `/data/local/tmp/pixel-backup`, and ensures every script is executable. pass `--install-magisk` to auto-stage the bundled magisk module immediately after the files are copied. customize where the scripts live by exporting `PIXEL_BACKUP_INSTALL_DIR=/path/you/prefer` before invoking the installer.
+
+> [!TIP]
+> Want the Magisk module right away? run `curl -Ls https://raw.githubusercontent.com/sfdcai/pixel-backup/refs/heads/main/install.sh | sh -s -- --install-magisk` to download the scripts and stage the module in one command.
 
 ### install as a magisk module (pixel 1 xl convenience)
 1. copy this repository onto the pixel (via `git clone`, `adb push`, or by
@@ -98,7 +112,7 @@ this is the easiest way to keep the scripts available after a reboot. whenever y
    ```
    mkdir -p /data/local/tmp/pixel-backup
    cd /data/local/tmp/pixel-backup
-   curl -L https://github.com/master-hax/pixel-backup/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1
+   curl -L https://github.com/sfdcai/pixel-backup/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1
    chmod 0755 *.sh
    ```
 
@@ -137,6 +151,10 @@ available settings:
   phone (defaults to `/mnt/pixel_backup_drive`)
 * `PIXEL_BACKUP_INTERNAL_MOUNT_POINT` – override automatic Android-version
   detection for the internal storage mount
+* `PIXEL_BACKUP_DRIVE_SOURCE` – control what portion of the drive is exposed:
+  `auto` (default) uses `/the_binding` if it already exists on the drive or
+  falls back to the drive root, `subdir` forces the legacy `/the_binding`
+  folder, and `root` always shares the entire volume
 * `PIXEL_BACKUP_DISABLE_SELINUX` – set to `0` to skip the permissive SELinux
   toggle in `mount_ext4.sh`
 * `PIXEL_BACKUP_MEDIA_SCAN` – set to `0` to skip the media scanner broadcast
@@ -175,7 +193,7 @@ available settings:
 1. find the name of folder that the drive is mounted to. it looks like `/mnt/media_rw/2IDK-11F4` - you can check the path displayed in any file explorer app.
 1. run `./remount_vfat.sh <MOUNTED_FOLDER>` e.g. `./remount_vfat.sh /mnt/media_rw/2IDK-11F4`
 
-**everything located under `/the_binding` on the external drive should now be visible by apps at `/the_binding` in the internal storage** (the directories are automatically created if they don't already exist). progress messages are printed throughout the mount so you can see what the script is doing.
+**by default the scripts expose any existing `/the_binding` folder on the drive; if it is missing they fall back to sharing the entire drive at `/the_binding` inside internal storage**. progress messages are printed throughout the mount so you can see what the script is doing.
 
 > [!NOTE]  
 > Google Photos will not instantly pick up the new media. It scans the filesystem to update their library when it wants to.

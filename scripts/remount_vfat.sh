@@ -39,8 +39,26 @@ case "$fs_type" in
     ;;
 esac
 
-drive_binding_dir="$mounted_drive_path/$PIXEL_BACKUP_BINDING_NAME"
 internal_binding_dir=$(internal_binding_path)
+
+drive_binding_dir=$(resolve_drive_binding_source "$mounted_drive_path")
+drive_binding_reason=$PIXEL_BACKUP_BINDING_SOURCE_REASON
+
+case "$drive_binding_reason" in
+  subdir)
+    echo "[pixel-backup] 📂 exposing existing '$PIXEL_BACKUP_BINDING_NAME' directory from the drive"
+    ensure_directory "$drive_binding_dir"
+    ;;
+  auto-subdir)
+    echo "[pixel-backup] 📂 detected '$PIXEL_BACKUP_BINDING_NAME' on the drive; sharing that directory"
+    ;;
+  auto-root)
+    log_warn "'$PIXEL_BACKUP_BINDING_NAME' not present on drive; sharing entire volume instead"
+    ;;
+  root)
+    echo "[pixel-backup] 📂 configured to expose the entire drive"
+    ;;
+esac
 
 echo "[pixel-backup] 🔗 binding $drive_binding_dir -> $internal_binding_dir"
 
@@ -49,7 +67,6 @@ if is_path_mounted "$internal_binding_dir"; then
   exit 1
 fi
 
-ensure_directory "$drive_binding_dir"
 ensure_directory "$internal_binding_dir"
 
 echo "[pixel-backup] 🔄 exposing drive contents to internal storage"

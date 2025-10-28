@@ -34,7 +34,6 @@ if [ "$file_type" != "block special file" ]; then
 fi
 
 drive_mount_dir=$(drive_mount_point)
-drive_binding_dir=$(drive_binding_path)
 internal_binding_dir=$(internal_binding_path)
 
 echo "[pixel-backup] 📁 mounting $ext4_blockdev_path -> $drive_mount_dir"
@@ -51,7 +50,6 @@ if is_path_mounted "$internal_binding_dir"; then
 fi
 
 ensure_directory "$drive_mount_dir"
-ensure_directory "$drive_binding_dir"
 
 cleanup_on_failure() {
   status=$?
@@ -68,9 +66,28 @@ trap cleanup_on_failure EXIT
 echo "[pixel-backup] 🧰 mounting ext4 filesystem with read/write permissions"
 mount -t ext4 -o nosuid,nodev,noexec,noatime "$ext4_blockdev_path" "$drive_mount_dir"
 
+drive_binding_dir=$(resolve_drive_binding_source "$drive_mount_dir")
+drive_binding_reason=$PIXEL_BACKUP_BINDING_SOURCE_REASON
+
+case "$drive_binding_reason" in
+  subdir)
+    echo "[pixel-backup] 📂 exposing existing '$PIXEL_BACKUP_BINDING_NAME' directory from the drive"
+    ensure_directory "$drive_binding_dir"
+    ;;
+  auto-subdir)
+    echo "[pixel-backup] 📂 detected '$PIXEL_BACKUP_BINDING_NAME' on the drive; sharing that directory"
+    ;;
+  auto-root)
+    log_warn "'$PIXEL_BACKUP_BINDING_NAME' not present on drive; sharing entire volume instead"
+    ;;
+  root)
+    echo "[pixel-backup] 📂 configured to expose the entire drive"
+    ;;
+esac
+
 echo "[pixel-backup] 🛡️ applying permissive permissions for shared storage"
 chmod -R 0777 "$drive_binding_dir"
-chown -R sdcard_rw:sdcard_rw "$drive_mount_dir" 2>/dev/null || true
+chown -R sdcard_rw:sdcard_rw "$drive_binding_dir" 2>/dev/null || true
 
 echo "[pixel-backup] 🔐 evaluating selinux state"
 ensure_selinux_permissive
