@@ -1,4 +1,4 @@
-#!/bin/sh -ex
+#!/bin/sh -e
 
 ################################################################################
 # Description: show all block devices present in the system
@@ -6,4 +6,4 @@
 # Usage: ./show_devices.sh
 ################################################################################
 
-blkid
+blkid -o list || blkid

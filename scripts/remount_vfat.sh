@@ -7,10 +7,12 @@
 # Example: ./remount_vfat.sh /mnt/media_rw/2IDK-11F4
 ################################################################################
 
-if [ "$(readlink /proc/self/ns/mnt)" != "$(readlink /proc/1/ns/mnt)" ]; then
-  echo "not running in global mount namespace, try elevating first"
-  exit 1
-fi
+. "$(dirname "$0")/common.sh"
+
+require_global_mount_namespace
+require_pixel_xl
+
+echo "[pixel-backup] 📟 Pixel 1 XL environment confirmed"
 
 if [ "$#" -ne 1 ]; then
   echo "Usage: $0 /mnt/media_rw/<label>" >&2
@@ -18,48 +20,64 @@ if [ "$#" -ne 1 ]; then
 fi
 
 mounted_drive_path=$1
+echo "[pixel-backup] 🔍 checking mounted directory $mounted_drive_path"
 if [ ! -e "$mounted_drive_path" ]; then
-  echo "directory was not found"
+  echo "[pixel-backup] ❌ directory '$mounted_drive_path' was not found" >&2
   exit 1
 fi
 if [ ! -d "$mounted_drive_path" ]; then
-  echo "path was not a directory"
+  echo "[pixel-backup] ❌ path '$mounted_drive_path' was not a directory" >&2
   exit 1
 fi
 
-fs_type=$(stat -f -c %T "$mounted_drive_path")
-if [ "$fs_type" != "msdos" ] && [ "$fs_type" != "vfat" ]; then
-    echo "detected filesystem type was not 'msdos' or 'vfat', found $fs_type"
-    exit 1
+fs_type=$(stat -f -c %T "$mounted_drive_path" 2>/dev/null || true)
+case "$fs_type" in
+  msdos|vfat|fuseblk|fuse)
+    ;;
+  *)
+    log_warn "expected a FAT/vfat filesystem but detected '$fs_type'"
+    ;;
+esac
+
+internal_binding_dir=$(internal_binding_path)
+
+drive_binding_dir=$(resolve_drive_binding_source "$mounted_drive_path")
+drive_binding_reason=$PIXEL_BACKUP_BINDING_SOURCE_REASON
+
+case "$drive_binding_reason" in
+  subdir)
+    echo "[pixel-backup] 📂 exposing existing '$PIXEL_BACKUP_BINDING_NAME' directory from the drive"
+    ensure_directory "$drive_binding_dir"
+    ;;
+  auto-subdir)
+    echo "[pixel-backup] 📂 detected '$PIXEL_BACKUP_BINDING_NAME' on the drive; sharing that directory"
+    ;;
+  auto-root)
+    log_warn "'$PIXEL_BACKUP_BINDING_NAME' not present on drive; sharing entire volume instead"
+    ;;
+  root)
+    echo "[pixel-backup] 📂 configured to expose the entire drive"
+    ;;
+esac
+
+echo "[pixel-backup] 🔗 binding $drive_binding_dir -> $internal_binding_dir"
+
+if is_path_mounted "$internal_binding_dir"; then
+  echo "[pixel-backup] ❌ internal mount point '$internal_binding_dir' is already in use" >&2
+  exit 1
 fi
 
-android_version=$(getprop ro.build.version.release)
+ensure_directory "$internal_binding_dir"
 
-drive_binding_dir="$mounted_drive_path/the_binding"
-if [ "$android_version" -gt 10 ]; then
-  # for Android 11+
-  internal_binding_dir="/mnt/pass_through/0/emulated/0/the_binding"
+echo "[pixel-backup] 🔄 exposing drive contents to internal storage"
+if mount -t sdcardfs -o nosuid,nodev,noexec,noatime,gid=9997 "$drive_binding_dir" "$internal_binding_dir"; then
+  echo "[pixel-backup] ✅ sdcardfs bind established"
 else
-  # for Android 10 and below
-  internal_binding_dir="/mnt/runtime/write/emulated/0/the_binding"
-fi
-# create mount points and binding directory
-mkdir -p -v "$drive_binding_dir"
-mkdir -p -v "$internal_binding_dir"
-
-if [ "$android_version" -gt 10 ]; then
-mount \
-  "$drive_binding_dir" "$internal_binding_dir"
-else
-mount \
-  -t sdcardfs \
-  -o nosuid,nodev,noexec,noatime,gid=9997 \
-  "$drive_binding_dir" "$internal_binding_dir"
+  log_warn "sdcardfs bind failed, attempting plain bind mount"
+  mount -o bind "$drive_binding_dir" "$internal_binding_dir"
+  echo "[pixel-backup] ✅ plain bind mount established"
 fi
 
-# broadcast the mounted directory to media scanner
-am broadcast \
-  -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
-  -d file:///storage/emulated/0/the_binding/
+maybe_run_media_scan
 
-echo "vfat drive remounted succesfully"
+echo "[pixel-backup] 🎉 vfat drive remounted successfully for Google Photos"

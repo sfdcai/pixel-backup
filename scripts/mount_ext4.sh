@@ -1,4 +1,4 @@
-#!/bin/sh -ex
+#!/bin/sh -e
 
 ################################################################################
 # Description: mounts the specified ext4 block device to /the_binding
@@ -6,10 +6,12 @@
 # Usage: ./mount_ext4.sh <BLOCK_DEVICE_PATH>
 ################################################################################
 
-if [ "$(readlink /proc/self/ns/mnt)" != "$(readlink /proc/1/ns/mnt)" ]; then
-  echo "not running in global mount namespace, try elevating first"
-  exit 1
-fi
+. "$(dirname "$0")/common.sh"
+
+require_global_mount_namespace
+require_pixel_xl
+
+echo "[pixel-backup] 📟 Pixel 1 XL environment confirmed"
 
 if [ "$#" -ne 1 ]; then
   echo "Usage: $0 /dev/block/<label> e.g. $0 /dev/block/sdg1" >&2
@@ -18,39 +20,92 @@ fi
 
 ext4_blockdev_path=$1
 
-fs_type=$(stat -f -c %T "$ext4_blockdev_path")
-if [ "$fs_type" != "tmpfs" ]; then
-    echo "detected filesystem type was not 'tmpfs', found $fs_type"
-    exit 1
+echo "[pixel-backup] 🔍 checking block device at $ext4_blockdev_path"
+
+if [ ! -e "$ext4_blockdev_path" ]; then
+  echo "[pixel-backup] ❌ block device '$ext4_blockdev_path' was not found" >&2
+  exit 1
 fi
 
-drive_mount_dir='/mnt/my_drive'
-internal_binding_dir='/mnt/runtime/write/emulated/0/the_binding'
+file_type=$(stat -c %F "$ext4_blockdev_path" 2>/dev/null || true)
+if [ "$file_type" != "block special file" ]; then
+  echo "[pixel-backup] ❌ expected a block device, but '$ext4_blockdev_path' is '$file_type'" >&2
+  exit 1
+fi
 
-mkdir -p -v "$drive_mount_dir"
-mount \
-    -t ext4 \
-    -o nosuid,nodev,noexec,noatime \
-    "$ext4_blockdev_path" "$drive_mount_dir"
+drive_mount_dir=$(drive_mount_point)
+internal_binding_dir=$(internal_binding_path)
 
-mkdir -p -v "$drive_mount_dir"/the_binding
-chmod -R 777 "$drive_mount_dir"/the_binding
-chown -R sdcard_rw:sdcard_rw "$drive_mount_dir"
+echo "[pixel-backup] 📁 mounting $ext4_blockdev_path -> $drive_mount_dir"
+echo "[pixel-backup] 🔗 binding target inside internal storage: $internal_binding_dir"
 
-# may be possible to avoid this by mounting to /mnt/expand/<uuid>
-# TODO: use magiskpolicy https://github.com/topjohnwu/Magisk/blob/master/docs/tools.md#magiskpolicy
-setenforce 0
+if is_path_mounted "$drive_mount_dir"; then
+  echo "[pixel-backup] ❌ mount point '$drive_mount_dir' is already in use" >&2
+  exit 1
+fi
 
-mkdir -p -v "$internal_binding_dir"
-mount \
-    -t sdcardfs \
-    -o nosuid,nodev,noexec,noatime,gid=9997 \
-    "$drive_mount_dir/the_binding" "$internal_binding_dir"
+if is_path_mounted "$internal_binding_dir"; then
+  echo "[pixel-backup] ❌ internal mount point '$internal_binding_dir' is already in use" >&2
+  exit 1
+fi
 
-# TODO: reduce permissions via chmod & sdcardfs mask
+ensure_directory "$drive_mount_dir"
 
-am broadcast \
-  -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
-  -d file:///storage/emulated/0/the_binding/
+cleanup_on_failure() {
+  status=$?
+  if [ $status -ne 0 ]; then
+    log_warn "mount_ext4.sh failed with status $status, cleaning up"
+    unmount_if_mounted "$internal_binding_dir"
+    unmount_if_mounted "$drive_mount_dir"
+  fi
+  exit $status
+}
 
-echo "ext4 drive mounted successfully"
+trap cleanup_on_failure EXIT
+
+echo "[pixel-backup] 🧰 mounting ext4 filesystem with read/write permissions"
+mount -t ext4 -o nosuid,nodev,noexec,noatime "$ext4_blockdev_path" "$drive_mount_dir"
+
+drive_binding_dir=$(resolve_drive_binding_source "$drive_mount_dir")
+drive_binding_reason=$PIXEL_BACKUP_BINDING_SOURCE_REASON
+
+case "$drive_binding_reason" in
+  subdir)
+    echo "[pixel-backup] 📂 exposing existing '$PIXEL_BACKUP_BINDING_NAME' directory from the drive"
+    ensure_directory "$drive_binding_dir"
+    ;;
+  auto-subdir)
+    echo "[pixel-backup] 📂 detected '$PIXEL_BACKUP_BINDING_NAME' on the drive; sharing that directory"
+    ;;
+  auto-root)
+    log_warn "'$PIXEL_BACKUP_BINDING_NAME' not present on drive; sharing entire volume instead"
+    ;;
+  root)
+    echo "[pixel-backup] 📂 configured to expose the entire drive"
+    ;;
+esac
+
+echo "[pixel-backup] 🛡️ applying permissive permissions for shared storage"
+chmod -R 0777 "$drive_binding_dir"
+chown -R sdcard_rw:sdcard_rw "$drive_binding_dir" 2>/dev/null || true
+
+echo "[pixel-backup] 🔐 evaluating selinux state"
+ensure_selinux_permissive
+
+echo "[pixel-backup] 🧱 ensuring binding directories exist"
+ensure_directory "$internal_binding_dir"
+
+echo "[pixel-backup] 🔄 exposing drive contents to internal storage"
+if mount -t sdcardfs -o nosuid,nodev,noexec,noatime,gid=9997 "$drive_binding_dir" "$internal_binding_dir"; then
+  echo "[pixel-backup] ✅ sdcardfs bind established"
+else
+  log_warn "sdcardfs bind failed, attempting plain bind mount"
+  mount -o bind "$drive_binding_dir" "$internal_binding_dir"
+  echo "[pixel-backup] ✅ plain bind mount established"
+fi
+
+trap - EXIT
+
+maybe_run_media_scan
+
+echo "[pixel-backup] 🎉 ext4 drive mounted successfully for Google Photos"

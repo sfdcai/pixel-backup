@@ -14,6 +14,7 @@ DEVICE_TEMP_DIRECTORY := /data/local/tmp
 
 ALL_SCRIPTS := \
 scripts/run_as_termux.sh \
+scripts/common.sh \
 scripts/mount_ext4.sh \
 scripts/remount_vfat.sh \
 scripts/unmount.sh \
@@ -22,6 +23,8 @@ scripts/show_devices.sh \
 scripts/enable_tcp_debugging.sh \
 scripts/disable_tcp_debugging.sh \
 scripts/start_global_shell.sh \
+scripts/force_media_scan.sh \
+scripts/install_magisk_module.sh \
 
 .PHONY: release
 release: shellcheck pixel-backup-gang-$(PBG_VERSION).tar.gz
