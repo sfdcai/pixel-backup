@@ -14,6 +14,7 @@ DEVICE_TEMP_DIRECTORY := /data/local/tmp
 
 ALL_SCRIPTS := \
 scripts/run_as_termux.sh \
+scripts/common.sh \
 scripts/mount_ext4.sh \
 scripts/remount_vfat.sh \
 scripts/unmount.sh \
