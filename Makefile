@@ -23,6 +23,8 @@ scripts/show_devices.sh \
 scripts/enable_tcp_debugging.sh \
 scripts/disable_tcp_debugging.sh \
 scripts/start_global_shell.sh \
+scripts/force_media_scan.sh \
+scripts/install_magisk_module.sh \
 
 .PHONY: release
 release: shellcheck pixel-backup-gang-$(PBG_VERSION).tar.gz

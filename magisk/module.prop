@@ -1,0 +1,6 @@
+id=pixel-backup
+name=Pixel Backup Gang (Pixel XL)
+version=2.0.0
+versionCode=200
+author=pixel-backup gang
+description=Mount external USB storage inside internal storage on the Pixel 1 XL so Google Photos can back it up.

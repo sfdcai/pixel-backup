@@ -1,0 +1,9 @@
+#!/system/bin/sh
+# Convenience wrapper that enters the Pixel Backup global shell environment
+MODULE_DIR="/data/local/tmp/pixel-backup"
+SCRIPT="$MODULE_DIR/start_global_shell.sh"
+if [ ! -x "$SCRIPT" ]; then
+  echo "pixel-backup-shell: $SCRIPT is not available yet" >&2
+  exit 1
+fi
+exec "$SCRIPT" "$@"

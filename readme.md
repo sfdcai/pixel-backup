@@ -40,7 +40,7 @@ so i spent some time figuring out a way to get files on external storage drives 
 ### the good
 * works with the stock kernel
 * backs up external files larger than 4gb (stock OS only supports FAT32 for external drives)
-* reduces wear on internal flash storage by up to 50% (see https://github.com/master-hax/pixel-backup-gang/issues/30)
+* reduces wear on internal flash storage by up to 50% (see https://github.com/master-hax/pixel-backup/issues/30)
 * can prevent the device from overheating - the external drive gets hot instead
 * makes 32gb pixels viable for mass backup
 
@@ -57,30 +57,64 @@ so i spent some time figuring out a way to get files on external storage drives 
   hardware.
 * a USB storage drive formatted with an ext4 or FAT32 filesystem.
 
+### pixel 1 xl limitations & how the scripts account for them
+* **usb 2.0 otg throughput** – the first-gen pixel's usb-c port tops out at usb 2.0. expect ~30–35 MB/s maximum. the scripts print progress for each mount step so you can tell if slow copies are the phone or the drive.
+* **otg power budget (~900 mA)** – many portable ssds need more current than the phone can supply. use a y-cable or powered hub; the mount helpers wait for stable devices and retry scans so short brown-outs don't leave half-mounted paths behind.
+* **selinux lockdown** – android 10 on the pixel ships with strict policies. the ext4 flow temporarily toggles permissive mode (unless you opt out) and the vfat flow uses bind mounts so Google Photos can still traverse the files.
+* **limited internal storage** – the tooling binds into `/storage/emulated/0` without copying data, keeping the 32 GB internal flash mostly free while still triggering Photos' unlimited backup path.
+* **aging hardware** – the scripts include verbose logging & optional debug tracing so you can diagnose flaky usb connections or kernel quirks that crop up on well-used hardware.
+
 ## installation
 
-installation is essentially just copying the scripts to the device & making them executable. you can do this manually, or use one of the automated steps below. you also probably want to disable [Google Play Protect](https://developers.google.com/android/play-protect) scanning in the Play Store menu.
+installation is essentially just copying the scripts to the pixel 1 xl & making them executable. you can pull them straight onto the phone (Termux, adb shell, or the stock developer terminal) or stage them from a separate computer. you also probably want to disable [Google Play Protect](https://developers.google.com/android/play-protect) scanning in the Play Store menu.
 
-### from internet via pixel terminal (more convenient, doesn't require a separate computer, but a little sus)
-1. start a terminal application and navigate to the directory where you want to install the scripts
-1. run the following command:
+### one-line install on the pixel (root shell required)
 
-```sh -c "$(curl -fSs https://raw.githubusercontent.com/master-hax/pixel-backup-gang/install/install.sh)"```
+the fastest path on-device mirrors the legacy installer you linked. open a root shell (`su`) on the pixel and run:
 
-this one-liner runs a small installer script that downloads the latest release archive from github, unpacks it, then makes the contents executable. the current install script can be viewed [here](https://github.com/master-hax/pixel-backup-gang/blob/install/install.sh). piping strange scripts from the web into a root shell is generally not a good idea, but it is convenient. try not to make a habit of it. 😅
+```
+curl -Ls https://raw.githubusercontent.com/master-hax/pixel-backup/main/install.sh | sh
+```
 
-### from local repository via adb (preferred, works offline, allows changes, more secure, but requires a separate computer running Linux)
-1. install the following software: `adb make shellcheck tar` (requires a separate computer running Linux or Windows Subsystem for Linux)
-1. clone this repository (at the desired tag or commit)
+the installer verifies that the phone is a pixel 1 xl, downloads the latest toolkit snapshot, installs it to `/data/local/tmp/pixel-backup`, and ensures every script is executable. pass `--install-magisk` to auto-stage the bundled magisk module immediately after the files are copied. customize where the scripts live by exporting `PIXEL_BACKUP_INSTALL_DIR=/path/you/prefer` before invoking the installer.
+
+### install as a magisk module (pixel 1 xl convenience)
+1. copy this repository onto the pixel (via `git clone`, `adb push`, or by
+   downloading the archive in a browser) and open a terminal on the device.
+1. run `su` to obtain root access, then execute `./scripts/install_magisk_module.sh`.
+   the installer verifies that the phone reports itself as a pixel 1 xl
+   (`marlin`), stages the magisk module, and copies the current versions of the
+   scripts into `/data/adb/modules_update/pixel-backup`.
+1. reboot the pixel when prompted. magisk completes the installation during the
+   next boot and exposes the tooling at `/data/local/tmp/pixel-backup` as well as
+   the global `pixel-backup-shell` wrapper on your `$PATH`.
+
+this is the easiest way to keep the scripts available after a reboot. whenever you update the repository, rerun `install_magisk_module.sh` and reboot to redeploy the refreshed scripts through magisk. if you prefer a single command, run the one-line installer above with `--install-magisk` to copy the toolkit and stage the module in one go.
+
+### install directly on the pixel 1 xl (manual, no script)
+1. install [Termux](https://github.com/termux/termux-app) or enable the stock developer terminal so you can run commands locally.
+1. launch the terminal app, run `su`, and grant root access in Magisk.
+1. pick a writable directory such as `/data/local/tmp/pixel-backup` or `/data/data/com.termux/files/home/pixel-backup`:
+   ```
+   mkdir -p /data/local/tmp/pixel-backup
+   cd /data/local/tmp/pixel-backup
+   curl -L https://github.com/master-hax/pixel-backup/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1
+   chmod 0755 *.sh
+   ```
+
+you now have a fully functional copy of the tooling living on the pixel itself. updating in the future is just a matter of re-running the loop above (or re-running `install.sh`).
+
+### from local repository via adb (preferred for development or large edits)
+1. install the following software on your computer: `adb make shellcheck tar` (Linux or Windows Subsystem for Linux works; on macOS substitute `gmake` for `make`).
+1. clone this repository (at the desired tag or commit).
 1. run `make mobile-install` from the repository root. this installs the scripts to `/data/local/tmp` on the connected android device by default.
    * if your pixel has Termux installed, you can install the scripts to the Termux home directory with `make mobile-install DEVICE_INSTALL_DIRECTORY=/data/data/com.termux/files/home`
    * if you are running these steps on WSL, you should use the adb executable from windows (which has USB support) with `make mobile-install HOST_ADB_COMMAND=/mnt/c/Users/someone/AppData/Local/Android/Sdk/platform-tools/adb.exe`
 
-this is the preferred installation method for development as it doesn't require an internet connection & any changes to the scripts in the local repo are immediately deployed to the pixel
+this is the preferred installation method for development as it doesn't require an internet connection & any changes to the scripts in the local repo are immediately deployed to the pixel.
 
-> [!NOTE]  
+> [!NOTE]
 > The directories `/data/local/tmp` & `/data/data/com.termux/files/home` are known to have less restrictive selinux policies, which allow files to be made executable. Installing the scripts to other directories may not work.
-
 
 ## usage
 
@@ -119,8 +153,9 @@ available settings:
     * from a PC
       * run `adb shell`
       * run `su` then allow sudo access to the shell process in Magisk
-1. run `cd` to navigate to the installation directory e.g. `cd ./pixel-backup-gang` or `cd /data/data/com.termux/files/home/pixel-backup-gang` or `cd /data/local/tmp/pixel-backup-gang`
-1. run `./start_global_shell.sh` to enter the global mount namespace
+1. run `cd` to navigate to the installation directory e.g. `cd ./pixel-backup` or `cd /data/data/com.termux/files/home/pixel-backup` or `cd /data/local/tmp/pixel-backup`
+1. run `./start_global_shell.sh` (or the globally available `pixel-backup-shell`
+   if you installed the magisk module) to enter the global mount namespace
     * the Magisk "force the global mount namespace" doesn't work - maybe it only works for magisk modules?
 
 ### mounting
@@ -144,7 +179,7 @@ available settings:
 
 > [!NOTE]  
 > Google Photos will not instantly pick up the new media. It scans the filesystem to update their library when it wants to.
-> However, we send a media scan broadcast when the drive is mounted ([ext4](https://github.com/master-hax/pixel-backup-gang/blob/87a0fcc2d4481a54e5c8750bfbf2be8fcee0f50d/scripts/mount_ext4.sh#L52-L54),[VFAT](https://github.com/master-hax/pixel-backup-gang/blob/87a0fcc2d4481a54e5c8750bfbf2be8fcee0f50d/scripts/remount_vfat.sh#L60-L63))
+> However, we send a media scan broadcast when the drive is mounted ([ext4](scripts/mount_ext4.sh), [VFAT](scripts/remount_vfat.sh))
 > this is reported to be reliable to get photos to do a scan, however you may need to force close then re-open Google Photos
 
 ### unmounting
